@@ -1,0 +1,19 @@
+{
+  "name": "azure-resource-manager",
+  "description": "Azure Resource Manager 통합 플러그인. 공식 Azure MCP Server를 래핑하여 자연어로 Azure 리소스 조회/생성/수정/삭제 및 비용 분석, 거버넌스 검증을 수행합니다.",
+  "version": "0.1.0",
+  "author": {
+    "name": "peterlah",
+    "email": "nswlah@gmail.com"
+  },
+  "license": "MIT",
+  "keywords": [
+    "azure",
+    "azure-cli",
+    "arm",
+    "cloud",
+    "infrastructure",
+    "korean"
+  ],
+  "minimumClaudeCodeVersion": "3.0.0"
+}
