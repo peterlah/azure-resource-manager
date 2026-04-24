@@ -100,6 +100,9 @@ azure-resource-manager/
 │   └── current-context.md
 ├── agents/
 │   └── azure-architect.md       # WAF 기반 아키텍처 에이전트
+├── hooks/
+│   ├── hooks.json               # PreToolUse hook 등록
+│   └── check-az-destructive.sh  # 위험한 az 명령 차단 스크립트
 ├── .gitignore
 └── README.md
 ```
@@ -135,6 +138,18 @@ azure-resource-manager/
 - ✅ **시크릿 보호** — 키, 연결 문자열 평문 출력 금지
 - ❌ **자동 `--yes` 플래그 금지**
 - ❌ **프로덕션 일괄 작업 금지**
+
+### Pre-ToolUse Hook (v0.2.0+)
+
+프롬프트 레벨의 안전 가드에 더해, 플러그인은 **harness 레벨 Hook**으로 다음 위험한 Azure CLI 명령을 자동 차단합니다:
+
+| 차단 대상 | 이유 |
+|---|---|
+| `az group delete` | 리소스 그룹 전체를 한 번에 날림 — 사용자가 터미널에서 직접 실행해야 함 |
+| `az ... (delete\|purge\|remove) --yes` / `-y` | 자동 승인 삭제 금지 |
+| `az keyvault [secret\|key\|certificate] purge` | soft-delete 영구 삭제로 복구 불가 |
+
+차단된 경우 Claude에게 차단 사유가 전달되어, 사용자에게 명시적 확인을 요청하도록 유도합니다. Hook 구현: `hooks/check-az-destructive.sh` (Python 3 필요 — macOS 기본 포함).
 
 ## 트러블슈팅
 
