@@ -73,6 +73,7 @@ Claude Code 세션에서:
 - "rg-test에 Storage 계정 만들어줘" → **resource-deploy**
 - "이번 달 Azure 요금 분석해줘" → **cost-analyzer**
 - "우리 구독 거버넌스 점검해줘" → **governance-check**
+- "이 요구사항으로 Bicep 파일 짜줘" → **bicep-generator**
 
 ### Agent (복잡한 설계 위임)
 
@@ -93,7 +94,8 @@ azure-resource-manager/
 │   ├── resource-explorer/       # 리소스 조회 스킬
 │   ├── resource-deploy/         # 리소스 CUD 스킬 (안전 가드 포함)
 │   ├── cost-analyzer/           # 비용 분석 스킬
-│   └── governance-check/        # 정책 검증 스킬
+│   ├── governance-check/        # 정책 검증 스킬
+│   └── bicep-generator/         # 자연어 → Bicep IaC 변환 스킬
 ├── commands/
 │   ├── az-login.md
 │   ├── list-resources.md
