@@ -8,6 +8,7 @@ Azure Resource Manager 통합 Claude Code 플러그인. Microsoft 공식 [Azure 
 - **거버넌스 검증** — 네이밍, 태그, 리전 정책 자동 점검
 - **비용 분석** — 월간 비용, 이상 탐지, 최적화 제안
 - **아키텍처 컨설팅** — Well-Architected Framework 기반 설계 자문
+- **장애 진단** — Resource Health · Activity Log · App Insights · Advisor 다층 분석으로 RCA
 - **한국어 우선** — 모든 응답이 한국어로 작성됨
 
 ## 사전 요구사항
@@ -64,6 +65,7 @@ Claude Code 세션에서:
 | `/azure-resource-manager:az-login` | Azure 인증 상태 확인 및 로그인 |
 | `/azure-resource-manager:list-resources` | 빠른 리소스 목록 조회 |
 | `/azure-resource-manager:current-context` | 현재 구독/테넌트 컨텍스트 확인 |
+| `/azure-resource-manager:incident <리소스>` | 장애·이상 동작 1차 진단 (Service/Resource Health · Activity Log · 핵심 메트릭) |
 
 ### Skills (자연어 자동 호출)
 
@@ -74,13 +76,19 @@ Claude Code 세션에서:
 - "이번 달 Azure 요금 분석해줘" → **cost-analyzer**
 - "우리 구독 거버넌스 점검해줘" → **governance-check**
 - "이 요구사항으로 Bicep 파일 짜줘" → **bicep-generator**
+- "app-prod에 5xx 떠요, 왜?" → **incident-investigator**
 
-### Agent (복잡한 설계 위임)
+### Agent (복잡한 설계·진단 위임)
 
 복잡한 아키텍처 의사결정은 `azure-architect` 에이전트로 자동 위임됩니다:
 
 - "AKS와 Container Apps 중 뭘 써야 해?"
 - "한국 리전에서 Hub-Spoke 네트워크 설계해줘"
+
+다단계 RCA(Root Cause Analysis)는 `azure-troubleshooter` 에이전트로 위임됩니다:
+
+- "어제 14시에 5xx 폭주했는데 근본 원인 분석해줘"
+- "AKS → SQL → Storage 체인 어디가 병목인지 추적해줘"
 
 ## 디렉토리 구조
 
@@ -95,13 +103,16 @@ azure-resource-manager/
 │   ├── resource-deploy/         # 리소스 CUD 스킬 (안전 가드 포함)
 │   ├── cost-analyzer/           # 비용 분석 스킬
 │   ├── governance-check/        # 정책 검증 스킬
-│   └── bicep-generator/         # 자연어 → Bicep IaC 변환 스킬
+│   ├── bicep-generator/         # 자연어 → Bicep IaC 변환 스킬
+│   └── incident-investigator/   # 장애·이상 동작 다층 진단 스킬
 ├── commands/
 │   ├── az-login.md
 │   ├── list-resources.md
-│   └── current-context.md
+│   ├── current-context.md
+│   └── incident.md              # 장애 1차 진단 빠른 실행
 ├── agents/
-│   └── azure-architect.md       # WAF 기반 아키텍처 에이전트
+│   ├── azure-architect.md       # WAF 기반 아키텍처 에이전트
+│   └── azure-troubleshooter.md  # 다단계 RCA 진단 에이전트
 ├── hooks/
 │   ├── hooks.json               # PreToolUse hook 등록
 │   └── check-az-destructive.sh  # 위험한 az 명령 차단 스크립트
