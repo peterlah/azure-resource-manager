@@ -10,6 +10,8 @@ Azure Resource Manager 통합 Claude Code 플러그인. Microsoft 공식 [Azure 
 - **아키텍처 컨설팅** — Well-Architected Framework 기반 설계 자문
 - **장애 진단** — Resource Health · Activity Log · App Insights · Advisor 다층 분석으로 RCA
 - **보안 자세 점검** — 공개 노출, NSG, RBAC, Key Vault, Defender Secure Score 통합 진단 (azqr 통합)
+- **인터뷰 기반 아키텍처 설계** — 구조화된 Q&A → Mermaid(인라인) + D2(공식 Azure 아이콘) 다이어그램 + ADR + 비용 추정
+- **Terraform IaC 생성** — ADR → AVM 우선 Terraform 모듈 (Managed Identity, Key Vault 시크릿, 원격 state)
 - **한국어 우선** — 모든 응답이 한국어로 작성됨
 
 ## 사전 요구사항
@@ -68,6 +70,7 @@ Claude Code 세션에서:
 | `/azure-resource-manager:current-context` | 현재 구독/테넌트 컨텍스트 확인 |
 | `/azure-resource-manager:incident <리소스>` | 장애·이상 동작 1차 진단 (Service/Resource Health · Activity Log · 핵심 메트릭) |
 | `/azure-resource-manager:security-scan [quick\|standard\|deep]` | 보안 자세 빠른 점검 (공개 노출 · Defender · Key Vault · RBAC · azqr) |
+| `/azure-resource-manager:architect <한 줄 요구>` | 인터뷰 → Mermaid + D2 다이어그램 + ADR + Terraform 한 흐름 |
 
 ### Skills (자연어 자동 호출)
 
@@ -80,6 +83,8 @@ Claude Code 세션에서:
 - "이 요구사항으로 Bicep 파일 짜줘" → **bicep-generator**
 - "app-prod에 5xx 떠요, 왜?" → **incident-investigator**
 - "공개 노출된 리소스 있어?" / "Defender 점수 알려줘" → **security-posture**
+- "신규 시스템 아키텍처 그려줘" / "인터뷰로 설계 도와줘" → **architecture-interview**
+- "이 ADR로 Terraform 짜줘" / "AKS+SQL Terraform" → **terraform-generator**
 
 ### Agent (복잡한 설계·진단 위임)
 
@@ -113,13 +118,16 @@ azure-resource-manager/
 │   ├── governance-check/        # 정책 검증 스킬
 │   ├── bicep-generator/         # 자연어 → Bicep IaC 변환 스킬
 │   ├── incident-investigator/   # 장애·이상 동작 다층 진단 스킬
-│   └── security-posture/        # 보안 자세 통합 점검 스킬 (azqr 통합)
+│   ├── security-posture/        # 보안 자세 통합 점검 스킬 (azqr 통합)
+│   ├── architecture-interview/  # 인터뷰 → Mermaid+D2 다이어그램 + ADR + 비용 추정
+│   └── terraform-generator/     # ADR → AVM 우선 Terraform 모듈 변환
 ├── commands/
 │   ├── az-login.md
 │   ├── list-resources.md
 │   ├── current-context.md
 │   ├── incident.md              # 장애 1차 진단 빠른 실행
-│   └── security-scan.md         # 보안 자세 빠른 점검
+│   ├── security-scan.md         # 보안 자세 빠른 점검
+│   └── architect.md             # 인터뷰 + 다이어그램 + ADR + IaC 한 흐름
 ├── agents/
 │   ├── azure-architect.md       # WAF 기반 아키텍처 에이전트
 │   ├── azure-troubleshooter.md  # 다단계 RCA 진단 에이전트

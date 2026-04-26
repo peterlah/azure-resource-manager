@@ -79,6 +79,10 @@ graph TB
 - 실제 배포 → `resource-deploy` 스킬
 - 비용 분석 → `cost-analyzer` 스킬
 - 정책 검증 → `governance-check` 스킬
+- 인터뷰 기반 신규 설계 + 다이어그램(Mermaid + D2) + ADR → `architecture-interview` 스킬
+- ADR → IaC 변환 → `terraform-generator` 또는 `bicep-generator` 스킬
+- 보안 자세 검토 → `security-posture` 스킬, 컴플라이언스 감사 → `azure-security-auditor` 에이전트
+- 장애 진단 → `incident-investigator` 스킬, 다단계 RCA → `azure-troubleshooter` 에이전트
 
 ### 사용자 결정 존중
 설계는 제안일 뿐, 최종 결정은 사용자. 한 옵션을 강하게 밀지 말 것.
