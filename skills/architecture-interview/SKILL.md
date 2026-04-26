@@ -427,6 +427,137 @@ def add_edge(page, src, tgt, label="", style=None):
     e.apply_style_string(style or ORTHOGONAL_EDGE)
     return e
 
+# ───────────────────── Auto-layout (Cluster) ─────────────────────
+# v0.7.3 추가. v0.7.2까지 수동 좌표 계산으로 라벨 잘림·박스 겹침·노드 외톨이 발생.
+# Cluster/Row 추상화로 LLM은 구조만 선언, 좌표는 자동 계산.
+
+NODE_W_MIN     = 96     # 최소 노드 width (한국어 라벨 잘림 방지)
+NODE_H         = 64     # 노드 height (icon 영역)
+NODE_LABEL_PAD = 48     # 노드 아래 라벨 영역 (3줄까지 안전)
+NODE_GAP_X     = 32     # 같은 row 안 노드 가로 간격
+ROW_GAP        = 24     # row 사이 세로 간격
+PAD            = 24     # cluster 내부 여백
+TITLE_BAR      = 32     # 그룹 제목 영역
+
+def estimate_label_width(label: str, font_size: int = 11) -> int:
+    """한국어/영문 혼합 라벨의 픽셀 width 추정 (가장 긴 줄 기준)."""
+    def line_w(line: str) -> float:
+        w = 0.0
+        for ch in line:
+            if '가' <= ch <= '힣' or 'ㄱ' <= ch <= 'ㆎ':
+                w += font_size           # 한글 한 글자 ≈ font_size
+            elif ch == ' ':
+                w += font_size * 0.4
+            else:
+                w += font_size * 0.62    # 영문/숫자/기호
+        return w
+    longest = max((line_w(l) for l in label.split("\n")), default=font_size * 4)
+    return max(int(longest) + 16, NODE_W_MIN)
+
+class Row:
+    """Cluster 내부 가로 행. Cluster.row()로 생성."""
+    def __init__(self, name, fill="#FFFFFF", stroke="#0078D4"):
+        self.name = name
+        self.fill = fill
+        self.stroke = stroke
+        self.items = []   # list of dicts: {label, kind, id, w, h}
+
+    def add(self, label, kind, id=None, w=None, h=None):
+        """Add a node. width auto from label if not given."""
+        self.items.append({
+            "label": label,
+            "kind":  kind,
+            "id":    id or f"{kind}_{len(self.items)}",
+            "w":     w or estimate_label_width(label),
+            "h":     h or NODE_H,
+        })
+        return self
+
+    def _size(self):
+        if not self.items:
+            return 120, NODE_H + NODE_LABEL_PAD + TITLE_BAR
+        total_w = sum(n["w"] for n in self.items) \
+                  + NODE_GAP_X * (len(self.items) - 1) \
+                  + PAD * 2
+        max_h = max(n["h"] for n in self.items)
+        return total_w, max_h + NODE_LABEL_PAD + TITLE_BAR
+
+class Cluster:
+    """
+    의사결정용 자동 레이아웃 컨테이너. 사용 흐름:
+        c = Cluster("koreacentral — Production", fill="#EAF2FB")
+        app = c.row("Application", stroke="#0078D4")
+        app.add("APIM\\nStandard\\n~₩900k/월", "apim", id="apim")
+        app.add("AKS\\n3× D4s_v5\\n~₩520k/월", "aks", id="aks")
+        ...
+        nodes = c.layout(page, x=40, y=40)
+        add_edge(page, nodes["apim"], nodes["aks"])
+    """
+    GROUP_STYLE = (
+        "rounded=1;whiteSpace=wrap;html=1;fillColor={fill};strokeColor={stroke};"
+        "dashed=1;verticalAlign=top;align=left;spacingLeft=10;spacingTop=4;"
+        "fontStyle=1;fontSize={fs};"
+    )
+
+    def __init__(self, name, fill="#F5F7FA", stroke="#7A869A"):
+        self.name = name
+        self.fill = fill
+        self.stroke = stroke
+        self.rows = []
+        self.bbox = None   # (x, y, w, h) after layout()
+
+    def row(self, name, fill="#FFFFFF", stroke="#0078D4"):
+        r = Row(name, fill=fill, stroke=stroke)
+        self.rows.append(r)
+        return r
+
+    def layout(self, page, x=40, y=40):
+        """좌표 자동 계산 + drawio Object 생성. Returns dict {id: Object}."""
+        # Phase 1: row 사이즈 계산 → cluster bbox 결정
+        row_geo = []
+        max_inner_w = 0
+        cur_y = y + TITLE_BAR + PAD
+        for r in self.rows:
+            rw, rh = r._size()
+            row_geo.append((r, x + PAD, cur_y, rw, rh))
+            max_inner_w = max(max_inner_w, rw)
+            cur_y += rh + ROW_GAP
+        cluster_w = max_inner_w + PAD * 2
+        cluster_h = (cur_y - ROW_GAP) - y + PAD
+        self.bbox = (x, y, cluster_w, cluster_h)
+
+        # Phase 2: outer cluster box (z-order 가장 아래)
+        outer = drawpyo.diagram.Object(page=page, value=self.name)
+        outer.apply_style_string(self.GROUP_STYLE.format(
+            fill=self.fill, stroke=self.stroke, fs=14))
+        outer.position = (x, y)
+        outer.geometry.width = cluster_w
+        outer.geometry.height = cluster_h
+
+        # Phase 3: row 박스 (중간 z-order)
+        for r, rx, ry, rw, rh in row_geo:
+            row_box = drawpyo.diagram.Object(page=page, value=r.name)
+            row_box.apply_style_string(self.GROUP_STYLE.format(
+                fill=r.fill, stroke=r.stroke, fs=12))
+            row_box.position = (rx, ry)
+            row_box.geometry.width = rw
+            row_box.geometry.height = rh
+
+        # Phase 4: 노드 (가장 위 z-order)
+        nodes = {}
+        for r, rx, ry, rw, rh in row_geo:
+            child_y = ry + TITLE_BAR
+            child_x = rx + PAD
+            for n in r.items:
+                obj = drawpyo.diagram.Object(page=page, value=n["label"])
+                obj.apply_style_string(azure_shape(n["kind"]))
+                obj.position = (child_x, child_y)
+                obj.geometry.width = n["w"]
+                obj.geometry.height = n["h"]
+                nodes[n["id"]] = obj
+                child_x += n["w"] + NODE_GAP_X
+        return nodes
+
 # ───────────────────── File ─────────────────────
 
 OUT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -439,60 +570,79 @@ f.file_name = f"{ADR_ID}-{VIEW}.drawio"
 
 page = drawpyo.Page(file=f, name=f"{ADR_ID} — Component View")
 
-# ───────────────────── Layout ─────────────────────
-# Coordinates are in drawio units. Tip: 64px == 1 grid square.
+# ───────────────────── Layout (Cluster auto-layout) ─────────────────────
+# LLM은 "구조"만 선언. 좌표·박스 크기·라벨 width 모두 Cluster.layout()이 계산.
 
-# 사용자
-user = add_node(page, "B2C 사용자\n~10만 MAU", "user", x=40, y=40)
+# 사용자(외톨이 노드)
+user = add_node(page, "B2C 사용자\n~10만 MAU", "user", x=40, y=120, w=120, h=72)
 
-# Edge (Global)
-edge_box = add_group(page, "Edge (Global)", x=160, y=20, w=200, h=110)
-afd = add_node(page, "Front Door\nPremium\n~₩400k/월", "front_door", x=200, y=50)
+# Edge (Global) — 단일 노드라 Cluster까진 안 가도 OK
+edge = Cluster("Edge (Global)", fill="#FFFFFF")
+edge.row("CDN", stroke="#107C10").add(
+    "Front Door\nPremium\n~₩400k/월", "front_door", id="afd")
+edge_nodes = edge.layout(page, x=200, y=80)
 
-# koreacentral - Production
-prod_box = add_group(page, "koreacentral — Production", x=400, y=20, w=540, h=520, fill="#EAF2FB")
+# koreacentral — Production (4개 row 자동 레이아웃)
+prod = Cluster("koreacentral — Production", fill="#EAF2FB", stroke="#0078D4")
 
-# Application tier
-app_tier = add_group(page, "Application", x=420, y=60, w=500, h=130, fill="#FFFFFF", stroke="#0078D4")
-apim = add_node(page, "APIM\nStandard\n~₩900k/월", "apim", x=460, y=100)
-aks  = add_node(page, "AKS\n3× D4s_v5\n~₩520k/월", "aks",  x=620, y=100)
-acr  = add_node(page, "ACR\nPremium\n~₩70k/월",    "acr",  x=780, y=100)
+app = prod.row("Application", stroke="#0078D4")
+app.add("APIM\nStandard\n~₩900k/월", "apim", id="apim")
+app.add("AKS\n3× D4s_v5\n~₩520k/월", "aks",  id="aks")
+app.add("ACR\nPremium\n~₩70k/월",    "acr",  id="acr")
 
-# Data tier
-data_tier = add_group(page, "Data", x=420, y=210, w=500, h=130, fill="#FFFFFF", stroke="#FF8C00")
-sql   = add_node(page, "Azure SQL\nBC Gen5 4vCore\n~₩2,400k/월", "sql",     x=460, y=250)
-redis = add_node(page, "Redis\nPremium P1\n~₩550k/월",            "redis",   x=620, y=250)
-strg  = add_node(page, "Storage\nGZRS\n~₩50k/월",                  "storage", x=780, y=250)
+data = prod.row("Data", stroke="#FF8C00")
+data.add("Azure SQL\nBC Gen5 4vCore\n~₩2,400k/월", "sql",     id="sql")
+data.add("Redis\nPremium P1\n~₩550k/월",            "redis",   id="redis")
+data.add("Storage\nGZRS\n~₩50k/월",                  "storage", id="strg")
 
-# Identity & Secrets
-id_tier = add_group(page, "Identity & Secrets", x=420, y=360, w=500, h=110, fill="#FFFFFF", stroke="#5C2D91")
-entra = add_node(page, "Entra External ID\n~₩150k/월", "entra_b2c", x=480, y=395)
-kv    = add_node(page, "Key Vault\nPremium\n~₩30k/월", "kv",        x=720, y=395)
+idsec = prod.row("Identity & Secrets", stroke="#5C2D91")
+idsec.add("Entra External ID\n~₩150k/월", "entra_b2c", id="entra")
+idsec.add("Key Vault\nPremium\n~₩30k/월", "kv",        id="kv")
 
-# Observability
-obs_tier = add_group(page, "Observability", x=420, y=485, w=500, h=45, fill="#FFFFFF", stroke="#737373")
-appi = add_node(page, "App Insights", "appi",            x=480, y=495, w=48, h=32)
-la   = add_node(page, "Log Analytics\n~₩200k/월", "log_analytics", x=720, y=495, w=48, h=32)
+obs = prod.row("Observability", stroke="#737373")
+obs.add("Application Insights",        "appi",          id="appi")
+obs.add("Log Analytics\n~₩200k/월",    "log_analytics", id="la")
 
-# japaneast - DR
-dr_box = add_group(page, "japaneast — DR (Pilot Light)", x=960, y=20, w=240, h=320, fill="#FDF4E3", stroke="#FFB900")
-aks_dr = add_node(page, "AKS\n1× D4s_v5\n~₩170k/월",      "aks", x=1010, y=80)
-sql_dr = add_node(page, "SQL DR\nGeo-replica\n~₩600k/월", "sql", x=1010, y=240)
+prod_nodes = prod.layout(page, x=480, y=40)
+
+# japaneast — DR (Pilot Light)
+dr = Cluster("japaneast — DR (Pilot Light)", fill="#FDF4E3", stroke="#FFB900")
+dr.row("Compute", stroke="#FFB900").add(
+    "AKS\n1× D4s_v5\n~₩170k/월", "aks", id="aks_dr")
+dr.row("Data",    stroke="#FFB900").add(
+    "SQL DR\nGeo-replica\n~₩600k/월", "sql", id="sql_dr")
+# DR은 Production 우측에 배치 — prod.bbox로 다음 x 계산
+prod_x, prod_y, prod_w, prod_h = prod.bbox
+dr_nodes = dr.layout(page, x=prod_x + prod_w + 40, y=prod_y)
 
 # ───────────────────── Edges ─────────────────────
+# 모든 엣지는 ID로 참조 (좌표는 layout() 이후 자동 결정됨)
 
-add_edge(page, user, afd, "① HTTPS")
-add_edge(page, afd, apim, "② route")
-add_edge(page, apim, entra, "③ JWT")
-add_edge(page, apim, aks, "④")
-add_edge(page, aks, redis)
-add_edge(page, aks, sql)
-add_edge(page, aks, strg)
-add_edge(page, aks, kv)
-add_edge(page, aks, appi, "metrics", style=ORTHOGONAL_EDGE_DASHED)
-add_edge(page, appi, la)
-add_edge(page, sql, sql_dr, "geo-replica", style=ORTHOGONAL_EDGE_DASHED)
-add_edge(page, aks, aks_dr, "warm standby", style=ORTHOGONAL_EDGE_DASHED)
+afd   = edge_nodes["afd"]
+apim  = prod_nodes["apim"]
+aks   = prod_nodes["aks"]
+sql   = prod_nodes["sql"]
+redis = prod_nodes["redis"]
+strg  = prod_nodes["strg"]
+entra = prod_nodes["entra"]
+kv    = prod_nodes["kv"]
+appi  = prod_nodes["appi"]
+la    = prod_nodes["la"]
+aks_dr = dr_nodes["aks_dr"]
+sql_dr = dr_nodes["sql_dr"]
+
+add_edge(page, user,  afd,    "① HTTPS")
+add_edge(page, afd,   apim,   "② route")
+add_edge(page, apim,  entra,  "③ JWT", style=ORTHOGONAL_EDGE_DASHED)
+add_edge(page, apim,  aks,    "④")
+add_edge(page, aks,   redis)
+add_edge(page, aks,   sql)
+add_edge(page, aks,   strg)
+add_edge(page, aks,   kv)
+add_edge(page, aks,   appi,   "metrics",      style=ORTHOGONAL_EDGE_DASHED)
+add_edge(page, appi,  la)
+add_edge(page, sql,   sql_dr, "geo-replica",  style=ORTHOGONAL_EDGE_DASHED)
+add_edge(page, aks,   aks_dr, "warm standby", style=ORTHOGONAL_EDGE_DASHED)
 
 f.write()
 print(f"✅ Wrote: {os.path.join(OUT_DIR, f.file_name)}")
@@ -746,9 +896,14 @@ D2 렌더: `brew install d2 && d2 file.d2 file.svg` 또는 https://play.d2lang.c
 - [ ] 라인 길이 80자 이내 권장 (가독성)
 
 **Drawpyo Python (의사결정용 산출물 — 1순위)**
-- [ ] 모든 Azure 리소스에 `azure_shape("<kind>")` 사용 — 위 헬퍼가 `benc-uk/icon-collection`(MS 공식 SVG 미러) URL을 image-based shape로 임베드
+- [ ] **`Cluster` + `row().add(...)` API로 구조 선언** — LLM이 픽셀 좌표 직접 잡지 않음 (v0.7.3+). 좌표/박스 크기/라벨 width 자동 계산
+- [ ] 한 region(Production/DR/Edge)당 하나의 `Cluster`. Tier(Application/Data/Identity/Observability)는 `cluster.row(...)` 로
+- [ ] 모든 노드에 명시적 `id="..."` 지정 → 엣지에서 `nodes["id"]` 로 참조
+- [ ] 외톨이 노드(사용자·Internet 등)만 `add_node(...)` 직접 사용
 - [ ] 엣지는 기본값(`ORTHOGONAL_EDGE`)으로 — 직각 라우팅 + 둥근 모서리 (MS Learn 스타일)
 - [ ] 비동기·복제 연결은 `ORTHOGONAL_EDGE_DASHED` 점선
+- [ ] Cluster 간 배치는 `prev.bbox`(x, y, w, h)로 다음 cluster 위치 계산 — 겹침 방지
+- [ ] 모든 Azure 리소스에 `azure_shape("<kind>")` 사용 — `benc-uk/icon-collection`(MS 공식 SVG 미러) URL을 image-based shape로 임베드
 - [ ] 미지원 서비스(예: Bastion / OpenAI 단독 / Defender)는 가까운 카테고리 아이콘으로 대용 + 라벨로 보완
 - [ ] `add_node(...)` 좌표가 그룹 박스 안에 들어가는지 (그룹 (x,y)~(x+w,y+h) 범위)
 - [ ] 그룹 박스끼리 겹치지 않게 배치
@@ -787,11 +942,18 @@ import drawpyo
 f = drawpyo.File(); f.file_path = "./diagrams"; f.file_name = "simple-web.drawio"
 page = drawpyo.Page(file=f, name="Web + DB")
 
-user = add_node(page, "사용자", "user", 40, 80)
-afd  = add_node(page, "Front Door", "front_door", 180, 80)
-app  = add_node(page, "App Service\nP1v3", "app_service", 320, 80)
-sql  = add_node(page, "Azure SQL\nGP Gen5", "sql", 460, 40)
-rds  = add_node(page, "Redis\nBasic C1", "redis", 460, 130)
+user = add_node(page, "사용자", "user", 40, 120, w=120, h=72)
+
+c = Cluster("Production", fill="#EAF2FB")
+c.row("Edge").add("Front Door", "front_door", id="afd")
+c.row("App").add("App Service\nP1v3", "app_service", id="app")
+c.row("Data").add("Azure SQL\nGP Gen5", "sql", id="sql")\
+             .add("Redis\nBasic C1",   "redis", id="rds")
+n = c.layout(page, x=200, y=40)
+add_edge(page, user, n["afd"], "HTTPS")
+add_edge(page, n["afd"], n["app"])
+add_edge(page, n["app"], n["sql"])
+add_edge(page, n["app"], n["rds"])
 
 add_edge(page, user, afd, "HTTPS")
 add_edge(page, afd, app)
@@ -832,19 +994,23 @@ flowchart TB
 **Drawpyo Python**
 ```python
 hub  = add_group(page, "Hub VNet", 40, 40, 280, 200, fill="#EAF2FB")
-fw   = add_node(page, "Azure Firewall", "firewall", 70, 80)
-vpn  = add_node(page, "VPN Gateway", "vpn_gateway", 170, 80)
-# Bastion은 benc-uk 미러에 없어 generic shape로 fallback (또는 NSG 등 비슷한 카테고리 대용)
-bast = add_node(page, "Bastion", "nsg", 70, 170)
+hub = Cluster("Hub VNet", fill="#E8F4FD", stroke="#0078D4")
+hub.row("Security").add("Firewall", "firewall", id="fw")\
+                   .add("VPN Gateway", "vpn_gateway", id="vpn")\
+                   .add("Bastion", "nsg", id="bast")  # Bastion 아이콘 미러 부재 → NSG 대용
+hub_n = hub.layout(page, x=40, y=40)
 
-prod = add_group(page, "Spoke - Prod", 360, 40, 200, 90, fill="#E6F4EA")
-app_p = add_node(page, "App", "app_service", 410, 70)
+prod = Cluster("Spoke - Prod", fill="#E6F4EA", stroke="#107C10")
+prod.row("App").add("App", "app_service", id="app_p")
+prod_n = prod.layout(page, x=hub.bbox[0] + hub.bbox[2] + 40, y=40)
 
-dev  = add_group(page, "Spoke - Dev", 360, 150, 200, 90, fill="#FFF7E6")
-app_d = add_node(page, "App", "app_service", 410, 180)
+dev = Cluster("Spoke - Dev", fill="#FFF7E6", stroke="#FFB900")
+dev.row("App").add("App", "app_service", id="app_d")
+dev_n = dev.layout(page, x=hub.bbox[0] + hub.bbox[2] + 40,
+                   y=prod.bbox[1] + prod.bbox[3] + 24)
 
-add_edge(page, fw, app_p, "peering")
-add_edge(page, fw, app_d, "peering")
+add_edge(page, hub_n["fw"], prod_n["app_p"], "peering")
+add_edge(page, hub_n["fw"], dev_n["app_d"],  "peering")
 ```
 
 **D2 (폴백)**
@@ -873,20 +1039,23 @@ flowchart LR
 
 **Drawpyo Python**
 ```python
-prod   = add_node(page, "Producer", "user", 40, 90)
-eh     = add_node(page, "Event Hubs", "event_hubs", 180, 90)
-fn1    = add_node(page, "Function 1", "function", 340, 40)
-fn2    = add_node(page, "Function 2", "function", 340, 140)
-cosmos = add_node(page, "Cosmos DB", "cosmos", 500, 40)
-sb     = add_node(page, "Service Bus", "service_bus", 500, 140)
-worker = add_node(page, "AKS Worker", "aks", 660, 140)
+producer = add_node(page, "Producer", "user", 40, 140, w=120, h=72)
 
-add_edge(page, prod, eh)
-add_edge(page, eh, fn1)
-add_edge(page, eh, fn2)
-add_edge(page, fn1, cosmos)
-add_edge(page, fn2, sb)
-add_edge(page, sb, worker)
+c = Cluster("Pipeline", fill="#EAF2FB")
+c.row("Ingest").add("Event Hubs", "event_hubs", id="eh")
+c.row("Process").add("Function 1", "function", id="fn1")\
+                .add("Function 2", "function", id="fn2")
+c.row("Sink").add("Cosmos DB",   "cosmos",      id="cosmos")\
+             .add("Service Bus", "service_bus", id="sb")\
+             .add("AKS Worker",  "aks",         id="worker")
+n = c.layout(page, x=200, y=40)
+
+add_edge(page, producer, n["eh"])
+add_edge(page, n["eh"],  n["fn1"])
+add_edge(page, n["eh"],  n["fn2"])
+add_edge(page, n["fn1"], n["cosmos"])
+add_edge(page, n["fn2"], n["sb"])
+add_edge(page, n["sb"],  n["worker"])
 ```
 
 **D2 (폴백)**
@@ -911,22 +1080,25 @@ flowchart TB
 
 **Drawpyo Python**
 ```python
-user   = add_node(page, "사용자", "user", 40, 90)
-afd    = add_node(page, "Front Door", "front_door", 180, 90)
-apim   = add_node(page, "APIM", "apim", 320, 90)
-fn     = add_node(page, "Functions", "function", 460, 90)
-aoai   = add_node(page, "Azure OpenAI", "openai", 600, 40)        # Cognitive-Services 아이콘 대용
-search = add_node(page, "AI Search", "ai_search", 600, 130)
-cosmos = add_node(page, "Cosmos DB", "cosmos", 600, 220)
-blob   = add_node(page, "Blob", "storage", 760, 130)
+user = add_node(page, "사용자", "user", 40, 160, w=120, h=72)
 
-add_edge(page, user, afd, "HTTPS")
-add_edge(page, afd, apim)
-add_edge(page, apim, fn)
-add_edge(page, fn, aoai)
-add_edge(page, fn, search)
-add_edge(page, fn, cosmos)
-add_edge(page, search, blob, "index", style=ORTHOGONAL_EDGE_DASHED)
+c = Cluster("RAG Pipeline", fill="#EAF2FB")
+c.row("Edge").add("Front Door", "front_door", id="afd")\
+             .add("APIM",       "apim",       id="apim")
+c.row("Compute").add("Functions", "function", id="fn")
+c.row("AI / Data").add("Azure OpenAI", "openai",    id="aoai")\
+                  .add("AI Search",    "ai_search", id="search")\
+                  .add("Cosmos DB",    "cosmos",    id="cosmos")\
+                  .add("Blob",         "storage",   id="blob")
+n = c.layout(page, x=200, y=40)
+
+add_edge(page, user,       n["afd"], "HTTPS")
+add_edge(page, n["afd"],   n["apim"])
+add_edge(page, n["apim"],  n["fn"])
+add_edge(page, n["fn"],    n["aoai"])
+add_edge(page, n["fn"],     n["search"])
+add_edge(page, n["fn"],     n["cosmos"])
+add_edge(page, n["search"], n["blob"], "index", style=ORTHOGONAL_EDGE_DASHED)
 ```
 
 **D2 (폴백)**
