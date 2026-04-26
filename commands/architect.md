@@ -17,11 +17,18 @@ Azure 신규 워크로드의 아키텍처를 인터뷰 기반으로 설계하고
 
 각 Phase 끝마다 사용자 확인. 수정 요청 받으면 ADR/다이어그램 갱신 후 재출력.
 
-산출물 작성 끝나면 사용자에게 다음 1회성 명령 안내:
+산출물 작성 끝나면:
+1. **스킬이 직접** 각 뷰 `.py` 를 `python3` 으로 실행 → `.drawio` 파일까지 자동 생성
+2. drawpyo 미설치면 사용자에게 `pip3 install drawpyo` 안내 후 자동 실행은 중단 (설치 후 다시 트리거)
+3. 사용자에게 보고할 것:
 ```bash
-pip install drawpyo                          # 1회만
-python ./diagrams/<adr-id>-component.py      # → .drawio 파일 생성
-# 그 .drawio 파일을 https://app.diagrams.net/ 또는 VS Code drawio 확장에서 열어 PNG/SVG export
+# 1회만 (안 깔려있다면)
+pip3 install drawpyo
+
+# .drawio 열기 — 셋 중 하나
+#  (a) https://app.diagrams.net/ 에서 File > Open from > Device
+#  (b) drawio Desktop
+#  (c) VS Code 확장 "Draw.io Integration" by Henning Dieterichs
 ```
 
 ### 2단계: 사용자가 ADR 확정한 뒤 다음 옵션 제시

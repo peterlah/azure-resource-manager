@@ -21,7 +21,7 @@ Azure Resource Manager 통합 Claude Code 플러그인. Microsoft 공식 [Azure 
 | Azure CLI | ≥ 2.50 | `brew install azure-cli` |
 | Node.js | ≥ 18 | `brew install node` (npx용) |
 | Claude Code | ≥ 3.0 | [공식 사이트](https://claude.com/claude-code) |
-| Python 3 + Drawpyo | ≥ 3.9 | `pip install drawpyo` (architecture-interview 다이어그램용, 옵션) |
+| Python 3 + Drawpyo | ≥ 3.9 | `pip3 install drawpyo` (macOS 기본은 `pip3`/`python3` — `pip` 별칭 없음. architecture-interview 다이어그램용, 옵션) |
 | drawio | desktop/web | https://app.diagrams.net/ 또는 VS Code "Draw.io Integration" 확장 (다이어그램 렌더, 옵션) |
 
 ## 설치
