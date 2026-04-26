@@ -10,7 +10,7 @@ Azure Resource Manager 통합 Claude Code 플러그인. Microsoft 공식 [Azure 
 - **아키텍처 컨설팅** — Well-Architected Framework 기반 설계 자문
 - **장애 진단** — Resource Health · Activity Log · App Insights · Advisor 다층 분석으로 RCA
 - **보안 자세 점검** — 공개 노출, NSG, RBAC, Key Vault, Defender Secure Score 통합 진단 (azqr 통합)
-- **인터뷰 기반 아키텍처 설계** — 구조화된 Q&A → Mermaid(인라인) + D2(공식 Azure 아이콘) 다이어그램 + ADR + 비용 추정
+- **인터뷰 기반 아키텍처 설계** — 구조화된 Q&A → Mermaid(인라인) + Drawpyo→drawio(MS Learn 스타일 공식 Azure 아이콘) 다이어그램 + ADR + 비용 추정
 - **Terraform IaC 생성** — ADR → AVM 우선 Terraform 모듈 (Managed Identity, Key Vault 시크릿, 원격 state)
 - **한국어 우선** — 모든 응답이 한국어로 작성됨
 
@@ -21,6 +21,8 @@ Azure Resource Manager 통합 Claude Code 플러그인. Microsoft 공식 [Azure 
 | Azure CLI | ≥ 2.50 | `brew install azure-cli` |
 | Node.js | ≥ 18 | `brew install node` (npx용) |
 | Claude Code | ≥ 3.0 | [공식 사이트](https://claude.com/claude-code) |
+| Python 3 + Drawpyo | ≥ 3.9 | `pip install drawpyo` (architecture-interview 다이어그램용, 옵션) |
+| drawio | desktop/web | https://app.diagrams.net/ 또는 VS Code "Draw.io Integration" 확장 (다이어그램 렌더, 옵션) |
 
 ## 설치
 
@@ -119,7 +121,7 @@ azure-resource-manager/
 │   ├── bicep-generator/         # 자연어 → Bicep IaC 변환 스킬
 │   ├── incident-investigator/   # 장애·이상 동작 다층 진단 스킬
 │   ├── security-posture/        # 보안 자세 통합 점검 스킬 (azqr 통합)
-│   ├── architecture-interview/  # 인터뷰 → Mermaid+D2 다이어그램 + ADR + 비용 추정
+│   ├── architecture-interview/  # 인터뷰 → Mermaid+Drawpyo→drawio 다이어그램 + ADR + 비용 추정
 │   └── terraform-generator/     # ADR → AVM 우선 Terraform 모듈 변환
 ├── commands/
 │   ├── az-login.md

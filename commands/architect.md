@@ -8,9 +8,21 @@ Azure 신규 워크로드의 아키텍처를 인터뷰 기반으로 설계하고
 `architecture-interview` 스킬의 3-Phase 워크플로우를 그대로 진행:
 - Phase 1: 트리아지 5–7개 질문 (워크로드/규모/위치/스택/컴플라이언스/예산)
 - Phase 2: 후보 아키텍처 1–3개 선정 후 심화 질문 (가용성/데이터/통합/보안/운영)
-- Phase 3: 산출물 — Mermaid(인라인) + D2(`./diagrams/<adr-id>-*.d2`) + ADR(`./diagrams/<adr-id>.md`) + 비용 추정
+- Phase 3: 산출물 (각 뷰마다 두 가지 동시 생성):
+  - **Mermaid** — 채팅 인라인 미리보기 (즉시 검토)
+  - **Drawpyo Python** — `./diagrams/<adr-id>-<view>.py` (의사결정용 MS Learn 스타일 산출물)
+  - **D2 폴백** — `./diagrams/<adr-id>-<view>.d2` (Python 미설치 시)
+  - **ADR** — `./diagrams/<adr-id>.md`
+  - 비용 추정
 
 각 Phase 끝마다 사용자 확인. 수정 요청 받으면 ADR/다이어그램 갱신 후 재출력.
+
+산출물 작성 끝나면 사용자에게 다음 1회성 명령 안내:
+```bash
+pip install drawpyo                          # 1회만
+python ./diagrams/<adr-id>-component.py      # → .drawio 파일 생성
+# 그 .drawio 파일을 https://app.diagrams.net/ 또는 VS Code drawio 확장에서 열어 PNG/SVG export
+```
 
 ### 2단계: 사용자가 ADR 확정한 뒤 다음 옵션 제시
 
